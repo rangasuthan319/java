@@ -1,0 +1,206 @@
+package week_8;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Scanner;
+
+public class HotelBookingSystem {
+
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/hotel_db";
+    private static final String DB_USER = "root";
+    private static final String DB_PASSWORD = "dbase";
+
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Hotel Booking System");
+        frame.setSize(800, 600);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        JPanel panel = new JPanel();
+        panel.setLayout(new BorderLayout());
+
+        JLabel welcomeLabel = new JLabel("Welcome to Our Hotel");
+        welcomeLabel.setFont(new Font("Serif", Font.BOLD, 20));
+        welcomeLabel.setHorizontalAlignment(JLabel.CENTER);
+
+        JLabel imageLabel = new JLabel(new ImageIcon("C:\\Users\\91917\\Downloads\\glassclad-skyscrapers-central-mumbai-reflecting-sunset-hues-blue-hour.jpg"));
+
+        panel.add(welcomeLabel, BorderLayout.NORTH);
+        panel.add(imageLabel, BorderLayout.CENTER);
+
+        JButton bookButton = new JButton("Book a Room");
+        bookButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                // Handle the booking process here
+                Connection conn = null;
+                try {
+                    conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+                    System.out.println("Connected to the database");
+
+                    // Create a table for rooms
+                    createRoomsTable(conn);
+
+                    // Insert more sample room data
+                    insertSampleRoomData(conn);
+
+                    // Update room availability
+                    updateRoomAvailability(conn, 3, false); // Example: Set room 3 as unavailable
+
+                    // Book a room
+                    bookRoom(conn);
+
+                    // Retrieve and display room information
+                    displayBookedRooms(conn);
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                } finally {
+                    try {
+                        if (conn != null) {
+                            conn.close();
+                        }
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+                frame.dispose(); // Close the entire frame
+            }
+        });
+
+        panel.add(bookButton, BorderLayout.SOUTH);
+
+        frame.add(panel);
+        frame.setVisible(true);
+    }
+
+    private static void createRoomsTable(Connection conn) throws SQLException {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS rooms ("
+                + "room_id INT AUTO_INCREMENT PRIMARY KEY,"
+                + "room_type VARCHAR(255),"
+                + "room_price DECIMAL(10, 2),"
+                + "available BOOLEAN DEFAULT TRUE,"
+                + "booked_by INT DEFAULT NULL,"
+                + "customer_name VARCHAR(255)"
+                + ")";
+        Statement statement = conn.createStatement();
+        statement.execute(createTableSQL);
+        statement.close();
+    }
+
+    private static void insertSampleRoomData(Connection conn) throws SQLException {
+        String insertDataSQL = "INSERT INTO rooms (room_type, room_price) VALUES (?, ?)";
+        PreparedStatement preparedStatement = conn.prepareStatement(insertDataSQL);
+
+        // Insert more sample rooms with different comfort levels and prices
+        String[] roomTypes = {"Basic Single", "Basic Double", "Standard Single", "Standard Double", "Deluxe Suite"};
+        double[] roomPrices = {80.00, 120.00, 120.00, 180.00, 250.00};
+
+        for (int i = 0; i < roomTypes.length; i++) {
+            preparedStatement.setString(1, roomTypes[i]);
+            preparedStatement.setDouble(2, roomPrices[i]);
+            preparedStatement.executeUpdate();
+        }
+
+        preparedStatement.close();
+    }
+
+    private static void updateRoomAvailability(Connection conn, int roomId, boolean available) throws SQLException {
+        String updateQuery = "UPDATE rooms SET available = ? WHERE room_id = ?";
+        PreparedStatement preparedStatement = conn.prepareStatement(updateQuery);
+
+        preparedStatement.setBoolean(1, available);
+        preparedStatement.setInt(2, roomId);
+
+        int rowsAffected = preparedStatement.executeUpdate();
+
+        if (rowsAffected > 0) {
+            System.out.println("Room availability updated successfully.");
+        } else {
+            System.out.println("Failed to update room availability.");
+        }
+
+        preparedStatement.close();
+    }
+
+    private static void bookRoom(Connection conn) throws SQLException {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Enter the room ID you want to book: ");
+        int roomId = scanner.nextInt();
+
+        // Check if the room is available
+        if (!isRoomAvailable(conn, roomId)) {
+            System.out.println("Sorry, this room is already booked.");
+            return;
+        }
+
+        System.out.println("Enter your user ID: ");
+        int userId = scanner.nextInt();
+
+        scanner.nextLine(); // Consume the newline character
+
+        System.out.println("Enter your name: ");
+        String customerName = scanner.nextLine();
+
+        String updateQuery = "UPDATE rooms SET available = false, booked_by = ?, customer_name = ? WHERE room_id = ?";
+        PreparedStatement preparedStatement = conn.prepareStatement(updateQuery);
+
+        preparedStatement.setInt(1, userId);
+        preparedStatement.setString(2, customerName);
+        preparedStatement.setInt(3, roomId);
+
+        int rowsAffected = preparedStatement.executeUpdate();
+
+        if (rowsAffected > 0) {
+            System.out.println("Room booked successfully.");
+        } else {
+            System.out.println("Failed to book the room.");
+        }
+
+        preparedStatement.close();
+    }
+
+    private static boolean isRoomAvailable(Connection conn, int roomId) throws SQLException {
+        String query = "SELECT available FROM rooms WHERE room_id = ?";
+        PreparedStatement stmt = conn.prepareStatement(query);
+        stmt.setInt(1, roomId);
+        ResultSet resultSet = stmt.executeQuery();
+
+        if (resultSet.next()) {
+            boolean available = resultSet.getBoolean("available");
+            resultSet.close();
+            stmt.close();
+            return available;
+        } else {
+            resultSet.close();
+            stmt.close();
+            return false;
+        }
+    }
+
+    private static void displayBookedRooms(Connection conn) throws SQLException {
+        String query = "SELECT * FROM rooms WHERE available = 0"; // Select only rooms that are not available (booked)
+        PreparedStatement stmt = conn.prepareStatement(query);
+        ResultSet resultSet = stmt.executeQuery();
+
+        while (resultSet.next()) {
+            int roomId = resultSet.getInt("room_id");
+            String roomType = resultSet.getString("room_type");
+            double roomPrice = resultSet.getDouble("room_price");
+            String customerName = resultSet.getString("customer_name");
+
+            System.out.println("Room ID: " + roomId);
+            System.out.println("Room Type: " + roomType);
+            System.out.println("Room Price: $" + roomPrice);
+            System.out.println("Booked by: " + customerName);
+            System.out.println();
+        }
+
+        resultSet.close();
+        stmt.close();
+    }
+}
